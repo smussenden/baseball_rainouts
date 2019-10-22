@@ -1,0 +1,90 @@
+---
+title: "Baseball Rainouts"
+author: "Sean Mussenden | Howard Center for Investigative Journalism"
+date: "10/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r}
+library(tidyverse)  # attaches purrr and readr
+library(fs)
+library(lubridate)
+```
+
+## Read in Data
+
+```{r}
+
+OOF gonna have to write a scraper. 
+
+https://www.retrosheet.org/schedule/index.html
+
+Because data in the zip file with all downloads is not the same as individusal links on the page below...
+
+# Data from here: https://www.retrosheet.org/schedule/index.html
+# Field description here
+
+# Set data directory
+data_dir <- "../data/input_data/test"
+
+# Use FS Package to store list of files in my directory as a vector
+txt_files <- fs::dir_ls(data_dir)
+
+# Read in all year data
+data <- txt_files %>% 
+  map_dfr(read_csv, col_names=c(
+        "date",
+        "game_no",
+        "day",
+        "visit_team",
+        "visit_league",
+        "visit_season_game_no",
+        "home_team",
+        "home_league",
+        "home_season_game_no",
+        "time_of_day",
+        "cancel_postpone_indicate",
+        "makeup_date"),
+        col_types = cols(
+          date = col_double(),
+          game_no = col_double(),
+          day = col_character(),
+          visit_team = col_character(),
+          visit_league = col_character(),
+          visit_season_game_no = col_double(),
+          home_team = col_character(),
+          home_league = col_character(),
+          home_season_game_no = col_character(),
+          time_of_day = col_character(),
+          cancel_postpone_indicate = col_character(),
+          makeup_date = col_double()
+        )
+        )
+
+glimpse(data)
+```
+
+## Cleaning
+
+```{r}
+glimpse(data)
+
+data_x <- data %>%
+  mutate(date = ymd(date), makeup_date = ymd(date)) %>%
+  mutate(year = year(date))
+
+year_check <- data_x %>%
+  group_by(year) %>%
+  summarise(count=n())
+
+postpone_check <- data_x %>%
+  group_by(year, cancel_postpone_indicate) %>%
+  summarise(count=n())
+
+```
