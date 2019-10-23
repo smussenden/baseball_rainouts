@@ -18,6 +18,10 @@ library(lubridate)
 library(rvest)
 library(stringr)
 library(downloader)
+library(retrosheet)
+library(RVerbalExpressions)
+install.packages('retrosheet')
+devtools::install_github("rmscriven/retrosheet")
 ```
 
 
@@ -31,6 +35,11 @@ library(rvest)
 library(stringr)
 library(downloader)
 library(RVerbalExpressions)
+```
+```{r}
+xtest <- getRetrosheet("play", 2018, "BAL")
+
+test <- getPartialGamelog(2012)
 ```
 
 ```{r}
@@ -169,6 +178,10 @@ data <- txt_files %>%
           makeup_date = col_double()
         )
         )
+
+```
+
+```{r}
 
 ```
 
