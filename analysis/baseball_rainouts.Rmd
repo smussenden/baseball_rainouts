@@ -15,26 +15,41 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)  # attaches purrr and readr
 library(fs)
 library(lubridate)
+library(rvest)
+library(stringr)
+library(downloader)
 ```
 
-## Read in Data
+## Scrape zip files from retrosheet
 
 ```{r}
 
-OOF gonna have to write a scraper. 
+# Store the retrosheet link as an object
+page <- read_html("https://www.retrosheet.org/schedule/index.html")
 
-https://www.retrosheet.org/schedule/index.html
+# Get a list of all of the links to the ZIP files to download
 
-Because data in the zip file with all downloads is not the same as individusal links on the page below...
+page <- page %>%
+  html_nodes("a") %>%       # find all links
+  html_attr("href") %>%     # get the url
+  str_subset("\\.ZIP")      # of links that end in .ZIP
 
-# Data from here: https://www.retrosheet.org/schedule/index.html
-# Field description here
+# For loop to download each zipfile and unzip it into a folder as a text file. 
+for (url in page) {
+    # Download each file into download folder, store it as a single zip file called a.zip that will be overwritten. 
+    download(url, dest="../data/download/a.zip", mode="wb") 
+    # Unzip each file into the unzip folder. 
+    unzip ("../data/download/a.zip", exdir = "../data/unzipped")
+}
+```
 
-# Set data directory
-data_dir <- "../data/input_data/test"
+```{r}
+
+# Create an object with data directory path
+data_dir <- "../data/unzipped"
 
 # Use FS Package to store list of files in my directory as a vector
-txt_files <- fs::dir_ls(data_dir)
+txt_files <- dir_ls(data_dir)
 
 # Read in all year data
 data <- txt_files %>% 
@@ -67,7 +82,6 @@ data <- txt_files %>%
         )
         )
 
-glimpse(data)
 ```
 
 ## Cleaning
@@ -77,14 +91,111 @@ glimpse(data)
 
 data_x <- data %>%
   mutate(date = ymd(date), makeup_date = ymd(date)) %>%
-  mutate(year = year(date))
+  mutate(year = year(date)) %>%
+  mutate(month = month(date))
 
 year_check <- data_x %>%
   group_by(year) %>%
   summarise(count=n())
 
 postpone_check <- data_x %>%
-  group_by(year, cancel_postpone_indicate) %>%
+  group_by(cancel_postpone_indicate) %>%
   summarise(count=n())
+
+teams <- data_x %>%
+  group_by(home_team) %>%
+  summarise(count=n()) %>%
+  arrange(home_team)
+
+```
+
+### Analysis by Year 
+```{r}
+# Create a subset of the last 100 years
+data_x <- data_x %>%
+  filter(year > 1920) %>%
+  # Add a line to filter for specific years
+  filter(home_team == "BAL")
+
+#STL, ANAHEIM, CARDINALS, METS, PHILLY, DETROIT, DENVER, LAD, BOSTON,RANGERS (TEXAS), CIN, WHITE SOX, KC, SF, SD, PITT, CLEVE
+
+
+# Create a total_games by year dataframe
+
+total_games_year <- data_x %>%
+  group_by(year) %>%
+  summarise(count=n()) %>%
+  arrange(year) %>%
+  filter(!is.na(year))
+
+# Filter data set to create a list of rain postponed games by year
+
+#weather_postponed_games <- data_x %>%
+#  filter(str_detect(str_to_lower(cancel_postpone_indicate),"rain|snow|hurricane|inclement|threatening|wet|flood"))
+weather_postponed_games <- data_x %>%
+  filter(str_detect(str_to_lower(cancel_postpone_indicate),"rain"))
+
+# Data frame of rain postponed games by year
+
+weather_postponed_games_year <- weather_postponed_games %>%
+  group_by(year) %>%
+  summarise(count=n()) %>%
+  arrange(year) %>%
+  filter(!is.na(year))
+
+# Join the two dataframes together and calculate percentage
+
+pct_weather_postponed_year <- weather_postponed_games_year %>%
+  inner_join(total_games_year, by="year") %>%
+  rename(total=count.y, postponed=count.x) %>%
+  mutate(pct_postponed = (postponed/total)*100)
+
+
+
+
+view(pct_weather_postponed_year)
+
+```
+
+### Analysis by Month and Year 
+```{r}
+# Create a subset of the last 100 years
+data_x <- data_x %>%
+  filter(year > 1920) %>%
+  # Add a line to filter for specific years
+  filter(home_team == "BAL")
+
+# Create a total_games by year dataframe
+
+total_games_month_year <- data_x %>%
+  group_by(month, year) %>%
+  summarise(count=n()) %>%
+  arrange(year, month) %>%
+  filter(!is.na(year))
+
+# Filter data set to create a list of rain postponed games by year
+
+weather_postponed_games <- data_x %>%
+  filter(str_detect(str_to_lower(cancel_postpone_indicate),"rain|snow|hurricane|inclement|threatening|wet|flood"))
+
+# Data frame of rain postponed games by year
+
+weather_postponed_games_month_year <- weather_postponed_games %>%
+  group_by(month, year) %>%
+  summarise(count=n()) %>%
+  arrange(year, month) %>%
+  filter(!is.na(year))
+
+# Join the two dataframes together and calculate percentage
+
+pct_weather_postponed_month_year <- weather_postponed_games_month_year %>%
+  inner_join(total_games_month_year, by=c("year","month")) %>%
+  rename(total=count.y, postponed=count.x) %>%
+  mutate(pct_postponed = (postponed/total)*100)
+
+
+
+
+view(pct_weather_postponed_month_year)
 
 ```
