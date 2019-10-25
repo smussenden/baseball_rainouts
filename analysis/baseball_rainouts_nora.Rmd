@@ -1,0 +1,185 @@
+---
+title: "Baseball Rainouts"
+author: "Sean Mussenden | Howard Center for Investigative Journalism"
+date: "10/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r}
+library(tidyverse)  # attaches purrr and readr
+library(lubridate)
+library(rvest)
+library(downloader)
+# library(fs)
+# library(stringr)
+
+# library(retrosheet)
+# install.packages('retrosheet')
+# devtools::install_github("rmscriven/retrosheet")
+```
+
+## Scrape zip files with season game logs from retrosheet and unzip. NOTE: Don't need to run this next section.  files already in folder
+
+```{r}
+
+#######
+#Lol, I wrote this before I realized that there was a retrosheet API package. In the future could just do this. 
+# library(retrosheet)
+# install.packages('retrosheet')
+# devtools::install_github("rmscriven/retrosheet")
+#######
+
+# NOTE: Don't need to run this again, data is in downloads folder. 
+
+# Also: don't run this over and over again, retrosheet server will get angry and block you. 
+# Be kind to the good people of retrosheet.
+
+# Data dictionary here: https://www.retrosheet.org/schedule/index.html
+
+# Store the retrosheet link as an object
+page <- read_html("https://www.retrosheet.org/schedule/index.html")
+
+# Get a list of all of the links to the ZIP files to download
+
+page <- page %>%
+  html_nodes("a") %>%       # find all links
+  html_attr("href") %>%     # get the url
+  str_subset("\\.ZIP")      # of links that end in .ZIP
+
+# For loop to download each zipfile and unzip it into a folder as a text file. 
+for (url in page) {
+    # Download each file into download folder, store it as a single zip file called a.zip that will be overwritten. 
+    download(url, dest="../data/download/a.zip", mode="wb") 
+    # Unzip each file into the unzip folder. 
+    unzip ("../data/download/a.zip", exdir = "../data/unzipped")
+}
+
+# Files end up in the download folder, one text file per year. 
+```
+
+## Read in the Data downloaded from Retrosheet
+
+```{r}
+
+# Create an object with data directory path
+data_dir <- "../data/unzipped"
+
+# Use FS Package to store list of files in my directory as a vector
+txt_files <- dir_ls(data_dir)
+
+# Read in all year data and store as an object called data. 
+data <- txt_files %>% 
+  map_dfr(read_csv, col_names=c(
+        "date",
+        "game_no",
+        "day",
+        "visit_team",
+        "visit_league",
+        "visit_season_game_no",
+        "home_team",
+        "home_league",
+        "home_season_game_no",
+        "time_of_day",
+        "cancel_postpone_indicate",
+        "makeup_date"),
+        col_types = cols(
+          date = col_double(),
+          game_no = col_double(),
+          day = col_character(),
+          visit_team = col_character(),
+          visit_league = col_character(),
+          visit_season_game_no = col_double(),
+          home_team = col_character(),
+          home_league = col_character(),
+          home_season_game_no = col_character(),
+          time_of_day = col_character(),
+          cancel_postpone_indicate = col_character(),
+          makeup_date = col_double()
+        )
+        )
+
+```
+
+## Cleaning the data
+
+```{r}
+# glimpse(data)
+
+# Make a year and month column
+data <- data %>%
+  mutate(date = ymd(date), makeup_date = ymd(date)) %>%
+  mutate(year = year(date)) %>%
+  mutate(month = month(date))
+
+# Some checks, count by year
+year_check <- data %>%
+  group_by(year) %>%
+  summarise(count=n())
+
+# Get a sense of what are reasons for postponement
+postpone_check <- data %>%
+  group_by(cancel_postpone_indicate) %>%
+  summarise(count=n())
+
+# Get a list of teams codes.  To figure out who is who, check out retrosheet site. Or you can use devtools package to install retrosheet package, and run function getTeamIDs(2019) or feed it past years to get past teams. 
+teams <- data %>%
+  group_by(home_team) %>%
+  summarise(count=n()) %>%
+  arrange(home_team)
+
+# Here are 2018 team codes
+#Angels      Orioles      Red Sox    White Sox      Indians       Tigers       Astros       Royals        Twins      Yankees    Athletics     Mariners 
+#"ANA"        "BAL"        "BOS"        "CHA"        "CLE"        "DET"        "HOU"        "KCA"        "MIN"        "NYA"        "OAK"        "SEA" 
+#Rays      Rangers    Blue Jays Diamondbacks       Braves         Cubs         Reds      Rockies      Dodgers      Marlins      Brewers         Mets 
+#"TBA"        "TEX"        "TOR"        "ARI"        "ATL"        "CHN"        "CIN"        "COL"        "LAN"        "MIA"        "MIL"        "NYN" 
+# Phillies      Pirates       Padres       Giants    Cardinals    Nationals 
+#"PHI"        "PIT"        "SDN"        "SFN"        "SLN"        "WAS" 
+
+```
+
+### Analysis by Year 
+```{r}
+# Create a subset of the last 100 years
+data <- data %>%
+  filter(year > 1920) 
+  # Add a line to filter for specific teams. For example, Baltimore.
+  #filter(home_team == "BAL")
+
+# Create a total_games by year dataframe.  We'll need this later to calculate percentages of postponed games by year.
+
+total_games_year <- data %>%
+  group_by(year) %>%
+  summarise(count=n()) %>%
+  arrange(year) %>%
+  filter(!is.na(year))
+
+# Filter data set to create a list of rain postponed games by year.  This code filters when cancelation reason was just listed as "Rain" in the data, OR if it said something like "Rain; No makeup played".  Essentially if it contained rain.  ALSO, this unfortunately picked up train delays, so had to exclude those with the second filter. NOTE: if you wanted other types of weather and precipitation, could add in more variables to check, for example:  filter(str_detect(str_to_lower(cancel_postpone_indicate),"rain|snow|hurricane|inclement|threatening|wet|flood"))
+
+weather_postponed_games <- data %>%
+  filter(str_detect(str_to_lower(cancel_postpone_indicate),"rain")) %>%
+  filter(!str_detect(str_to_lower(cancel_postpone_indicate),"train")) 
+
+# Calculate total number of weather postponed games by year
+
+weather_postponed_games_year <- weather_postponed_games %>%
+  group_by(year) %>%
+  summarise(count=n()) %>%
+  arrange(year) %>%
+  filter(!is.na(year))
+
+# Join the two dataframes together (total games and weather postponed games by year) and calculate percentage
+
+pct_weather_postponed_year <- weather_postponed_games_year %>%
+  inner_join(total_games_year, by="year") %>%
+  rename(total=count.y, postponed=count.x) %>%
+  mutate(pct_postponed = (postponed/total)*100)
+
+View(pct_weather_postponed_year)
+
+```

@@ -214,9 +214,9 @@ teams <- data_x %>%
 ```{r}
 # Create a subset of the last 100 years
 data_x <- data_x %>%
-  filter(year > 1920) %>%
+  filter(year > 1920) #%>%
   # Add a line to filter for specific years
-  filter(home_team == "BAL")
+  #filter(home_team == "BAL")
 
 #STL, ANAHEIM, CARDINALS, METS, PHILLY, DETROIT, DENVER, LAD, BOSTON,RANGERS (TEXAS), CIN, WHITE SOX, KC, SF, SD, PITT, CLEVE
 
